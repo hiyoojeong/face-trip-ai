@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>관상 기반 여행지 추천 AI 서비스</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(to bottom right, #f0f8ff, #e6e6fa);
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+
+        .description {
+            font-size: 1.2em;
+            color: #34495e;
+            margin-bottom: 30px;
+        }
+
+        button,
+        input[type="file"] {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1em;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: background-color 0.3s ease;
+            box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+            margin: 10px;
+        }
+
+        button:hover,
+        input[type="file"]:hover {
+            background-color: #2980b9;
+        }
+
+        #webcam-container,
+        #image-preview-container {
+            margin: 20px 0;
+            border: 3px solid #3498db;
+            padding: 10px;
+            border-radius: 10px;
+            box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+            background-color: #ffffff;
+        }
+
+        #uploaded-image {
+            width: 500px;
+            height: auto;
+            border-radius: 10px;
+        }
+
+        #label-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f9f9f9;
+            border: 2px solid #dcdcdc;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 5px 10px rgba(0, 0, 0, 0.1);
+            width: 80%;
+            max-width: 600px;
+        }
+
+        .bar-container {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+            width: 100%;
+        }
+
+        .bar-label {
+            width: 25%;
+            text-align: left;
+            font-size: 1em;
+            margin-right: 10px;
+        }
+
+        .bar {
+            width: 70%;
+            background-color: #dcdcdc;
+            border-radius: 5px;
+            overflow: hidden;
+            height: 20px;
+        }
+
+        .bar-fill {
+            height: 100%;
+            background-color: #3498db;
+            text-align: right;
+            padding-right: 5px;
+            color: white;
+            font-size: 0.9em;
+            line-height: 20px;
+        }
+
+        h3 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 5px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>관상 기반 여행지 추천 AI 서비스</h1>
+    <div class="description">당신의 관상을 보아하니,,, 이 여행지가 딱!이겠군요.</div>
+    <button type="button" onclick="initWebcam()">웹캠 시작</button>
+    <input type="file" accept="image/*" onchange="analyzeImage(event)" id="image-upload" />
+    <div id="webcam-container"></div>
+    <div id="image-preview-container" style="display: none;">
+        <img id="uploaded-image" src="" alt="Uploaded Image" />
+    </div>
+    <div id="label-container"></div>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    <script type="text/javascript">
+        // Teachable Machine 모델 URL
+        const models = [
+            "https://teachablemachine.withgoogle.com/models/MSoL5qnXb/", // 산 vs 바다
+            "https://teachablemachine.withgoogle.com/models/NiJpTn7-h/", // 템플스테이 vs 게스트하우스
+            "https://teachablemachine.withgoogle.com/models/xsVTofuwj/", // 자연 vs 도시
+            "https://teachablemachine.withgoogle.com/models/X_-NM6uac/"  // 에어비앤비 vs 호텔
+        ];
+
+        let modelList = [], webcam, labelContainer, maxPredictionsList = [];
+        let titleList = ["산 vs 바다", "템플스테이 vs 게스트하우스", "자연 vs 도시", "에어비앤비 vs 호텔"];
+
+        // 모든 모델을 로드
+        async function loadModels() {
+            if (modelList.length === 0) { // 모델이 이미 로드되었는지 확인
+                labelContainer = document.getElementById("label-container");
+                for (let i = 0; i < models.length; i++) {
+                    const modelURL = models[i] + "model.json";
+                    const metadataURL = models[i] + "metadata.json";
+                    const model = await tmImage.load(modelURL, metadataURL);
+                    modelList.push(model);
+                    maxPredictionsList.push(model.getTotalClasses());
+
+                    // 각 모델에 대한 레이블 컨테이너 생성
+                    const modelLabelContainer = document.createElement("div");
+                    modelLabelContainer.id = `model-label-container-${i}`;
+                    modelLabelContainer.innerHTML = `<h3>${titleList[i]} 예측 결과</h3>`;
+                    labelContainer.appendChild(modelLabelContainer);
+
+                    for (let j = 0; j < maxPredictionsList[i]; j++) {
+                        const barContainer = document.createElement("div");
+                        barContainer.className = "bar-container";
+                        barContainer.innerHTML = `
+                            <div class="bar-label"></div>
+                            <div class="bar">
+                                <div class="bar-fill" style="width: 0%"></div>
+                            </div>
+                        `;
+                        modelLabelContainer.appendChild(barContainer);
+                    }
+                }
+            }
+        }
+
+        // 기존 결과 초기화 함수
+        function resetResults() {
+            if (webcam) {
+                webcam.stop();
+                webcam = null;
+                document.getElementById("webcam-container").innerHTML = "";
+            }
+            document.getElementById("image-preview-container").style.display = 'none';
+            document.getElementById("uploaded-image").src = "";
+            document.getElementById("label-container").innerHTML = "";
+            modelList = [];
+            maxPredictionsList = [];
+        }
+
+        // 웹캠 기능 초기화
+        async function initWebcam() {
+            resetResults(); // 기존 결과 초기화
+            await loadModels();
+            const flip = true;
+            webcam = new tmImage.Webcam(200, 200, flip);
+            await webcam.setup();
+            await webcam.play();
+            window.requestAnimationFrame(loop);
+            document.getElementById("webcam-container").appendChild(webcam.canvas);
+        }
+
+        async function loop() {
+            webcam.update();
+            await predict(webcam.canvas);
+            window.requestAnimationFrame(loop);
+        }
+
+        // 파일 업로드를 통한 이미지 분석
+        async function analyzeImage(event) {
+            resetResults(); // 기존 결과 초기화
+            await loadModels();
+            const imagePreviewContainer = document.getElementById("image-preview-container");
+            const uploadedImage = document.getElementById("uploaded-image");
+            const file = event.target.files[0];
+
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    uploadedImage.src = e.target.result;
+                    imagePreviewContainer.style.display = 'block';
+                    predict(uploadedImage);
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        // 예측 실행 함수 (웹캠 및 업로드된 이미지 모두 사용 가능)
+        async function predict(imageElement) {
+            for (let i = 0; i < modelList.length; i++) {
+                const prediction = await modelList[i].predict(imageElement);
+                const modelLabelContainer = document.getElementById(`model-label-container-${i}`);
+
+                for (let j = 0; j < maxPredictionsList[i]; j++) {
+                    const classPrediction = prediction[j].className + ": " + (prediction[j].probability * 100).toFixed(2) + "%";
+                    const barLabel = modelLabelContainer.getElementsByClassName("bar-label")[j];
+                    const barFill = modelLabelContainer.getElementsByClassName("bar-fill")[j];
+
+                    barLabel.innerHTML = prediction[j].className;
+                    barFill.style.width = (prediction[j].probability * 100) + "%";
+                    barFill.innerHTML = (prediction[j].probability * 100).toFixed(2) + "%";
+                }
+            }
+        }
+    </script>
+
+</body>
+
+</html>
